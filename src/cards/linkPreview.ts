@@ -2,8 +2,9 @@ import { db, patchCard, uid, type LinkPreview } from '../db';
 
 const inflight = new Set<string>();
 
-/** Bump when the server returns meaningfully better previews, so existing cards refresh once. */
-export const PREVIEW_VERSION = 4;
+import { PREVIEW_VERSION } from '../lib/previewVersion';
+
+export { PREVIEW_VERSION };
 
 async function postJson(path: string, body: unknown) {
   return fetch(path, {

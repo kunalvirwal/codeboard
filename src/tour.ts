@@ -1,4 +1,5 @@
-import type { Board, BoardAppearance, BoardEdge, Card, FrameCard, FrameColor, NoteCard, NoteData, StoredBlob } from './db';
+import type { Board, BoardAppearance, BoardEdge, Card, FrameCard, FrameColor, LinkCard, NoteCard, NoteData, StoredBlob } from './db';
+import { PREVIEW_VERSION } from './lib/previewVersion';
 
 /**
  * The built-in tour: a few ordinary boards whose cards demonstrate the
@@ -20,6 +21,22 @@ const SAMPLE_IMAGE = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height
 <circle cx="310" cy="205" r="118" fill="#5b5bd6" fill-opacity="0.88"/>
 <rect x="262" y="58" width="150" height="92" rx="22" fill="#ffd166"/>
 <path d="M44 318 Q 240 238 436 318" fill="none" stroke="#17171a" stroke-width="10" stroke-linecap="round"/>
+</svg>`;
+
+// Two stand-in "pins" so the Pinterest section works offline.
+const PIN_TALL = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="640" viewBox="0 0 480 640">
+<rect width="480" height="640" fill="#e8e2f6"/>
+<circle cx="240" cy="250" r="150" fill="#9b6bff"/>
+<rect x="60" y="430" width="360" height="56" rx="28" fill="#ffd166"/>
+<rect x="110" y="510" width="260" height="40" rx="20" fill="#ff8a5c"/>
+<circle cx="330" cy="150" r="46" fill="#fff" fill-opacity="0.85"/>
+</svg>`;
+
+const PIN_SQUARE = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480">
+<rect width="480" height="480" fill="#ffe3d8"/>
+<path d="M0 340 Q 120 260 240 330 T 480 300 V480 H0 Z" fill="#2fb36b"/>
+<circle cx="340" cy="140" r="70" fill="#ff8a5c"/>
+<rect x="70" y="120" width="140" height="140" rx="30" fill="#4c8dff" transform="rotate(-10 140 190)"/>
 </svg>`;
 
 const SAMPLE_CODE = `// Pasted code is highlighted, and its language is detected.
@@ -88,7 +105,7 @@ export function buildTour(startTime = Date.now()): TourData {
   const sections = (b: Board) => {
     let nextX = 0;
     let previous: FrameCard | null = null;
-    return (w: number, h: number, title: string, color: FrameColor) => {
+    const add = (w: number, h: number, title: string, color: FrameColor) => {
       const box = frame(b, nextX, 0, w, h, title, color);
       b.markers!.push({ id: uid(), name: title, cardId: box.id, x: 0, y: 0, zoom: 1 });
       if (previous) arrow(b, previous, box, ['r', 'l'], { color: 'gray', dashed: true, label: 'Press ⌘→', localizeKeys: true });
@@ -96,6 +113,21 @@ export function buildTour(startTime = Date.now()): TourData {
       nextX += w + GAP;
       return box;
     };
+    /**
+     * The board's last stop, below the final section: where to go next, with
+     * the switch-board keys as a big keycap.
+     */
+    const finish = (heading: string, hint: string) => {
+      const last = previous!;
+      const w = 620;
+      const box = frame(b, Math.round(last.x + (last.width - w) / 2), (last.height ?? 0) + 300, w, 250, 'Up next', 'purple');
+      b.markers!.push({ id: uid(), name: 'Up next', cardId: box.id, x: 0, y: 0, zoom: 1 });
+      arrow(b, last, box, ['b', 't'], { color: 'gray', dashed: true, label: 'Press ⌘→', localizeKeys: true });
+      note(b, box, 40, 64, heading, { color: 'none', size: 'l', bold: true, w: 540 });
+      note(b, box, 40, 126, '⌘⇧↓', { color: 'black', font: 'mono', size: 'xl', align: 'center', w: 270 });
+      note(b, box, 340, 138, hint, { color: 'none', w: 240 });
+    };
+    return Object.assign(add, { finish });
   };
 
   const note = (b: Board, box: Card, dx: number, dy: number, text: string, opts: Partial<NoteData> & { w?: number } = {}) => {
@@ -157,7 +189,9 @@ export function buildTour(startTime = Date.now()): TourData {
 
     const find = section(780, 200, 'Find things', 'orange');
     note(b, find, 40, 70, 'Press ⌘K and type to search every note, snippet, link and box.', { color: 'blue', w: 330 });
-    note(b, find, 410, 70, 'Press ⌘⇧↓ to go to the next board: notes, boxes and arrows.', { color: 'green', w: 330 });
+    note(b, find, 410, 70, 'Press ⌘⇧↑ or ⌘⇧↓ to switch to the previous or next board.', { color: 'green', w: 330 });
+
+    section.finish('Up next: Notes, boxes, arrows', 'Press it to switch to the next board.');
   }
 
   // ------------------------------------------------------------ 2 · Notes, boxes, arrows
@@ -212,6 +246,8 @@ export function buildTour(startTime = Date.now()): TourData {
       color: 'none',
       w: 430,
     });
+
+    section.finish('Up next: Get organised', 'Press it to switch to the next board.');
   }
 
   // ------------------------------------------------------------ 3 · Get organised
@@ -239,6 +275,8 @@ export function buildTour(startTime = Date.now()): TourData {
       color: 'black',
       w: 460,
     });
+
+    section.finish('Up next: Make it yours', 'Press it to switch to the next board.');
   }
 
   // ------------------------------------------------------------ 4 · Make it yours
@@ -253,7 +291,7 @@ export function buildTour(startTime = Date.now()): TourData {
       w: 340,
     });
 
-    const images = section(880, 390, 'Images', 'pink');
+    const images = section(880, 390, 'Images', 'purple');
     const blobId = uid();
     data.blobs.push({ id: blobId, blob: new Blob([SAMPLE_IMAGE], { type: 'image/svg+xml' }) });
     data.cards.push({
@@ -266,9 +304,45 @@ export function buildTour(startTime = Date.now()): TourData {
       color: 'pink',
       w: 400,
     });
-    note(b, images, 440, 250, 'Copy a Pinterest pin link and press ⌘V: it shows as the full picture, with a badge that opens the pin.', {
+    note(b, images, 440, 250, "Click the copy button in an image's toolbar to copy it back out, ready to paste anywhere.", {
       color: 'green',
       w: 400,
+    });
+
+    const pins = section(1000, 500, 'Pinterest pins', 'pink');
+    const pin = (dx: number, w: number, svg: string, nw: number, nh: number, rotation?: number) => {
+      const blobId = uid();
+      data.blobs.push({ id: blobId, blob: new Blob([svg], { type: 'image/svg+xml' }) });
+      const card: LinkCard = {
+        ...base(b, pins.x + dx, 80, w),
+        type: 'link',
+        rotation,
+        data: {
+          url: 'https://www.pinterest.com/',
+          status: 'ok',
+          version: PREVIEW_VERSION,
+          imageBlobId: blobId,
+          preview: {
+            title: 'Sample pin',
+            siteName: 'Pinterest',
+            display: 'image',
+            image: `sample-pin-${nw}x${nh}.svg`,
+            favicon: 'https://s.pinimg.com/webapp/pinterest_favicon-70db4fa7.svg',
+          },
+        },
+      };
+      data.cards.push(card);
+    };
+    pin(50, 220, PIN_TALL, 480, 640);
+    pin(320, 220, PIN_SQUARE, 480, 480, 6);
+    note(b, pins, 590, 70, 'Copy a pin link (pinterest.com/pin/… or pin.it/…) and press ⌘V. You get the whole picture, no text.', { w: 370 });
+    note(b, pins, 590, 210, "Click the round badge in a pin's corner to open it. Double-clicking a pin does nothing, so it never opens by accident.", {
+      color: 'gray',
+      w: 370,
+    });
+    note(b, pins, 590, 350, "The lock in a pin's toolbar keeps its shape while you resize; click it to resize freely. Rotate pins with the round handle.", {
+      color: 'pink',
+      w: 370,
     });
 
     const big = section(560, 200, 'Big boards', 'gray');
@@ -278,11 +352,13 @@ export function buildTour(startTime = Date.now()): TourData {
     });
 
     const done = section(660, 220, 'All yours', 'orange');
-    note(b, done, 40, 70, 'Hover a tour board in the sidebar and click × to delete it. Settings, Tour boards, Add brings them back.', {
+    note(b, done, 40, 70, 'Hover a tour board in the sidebar and click × to delete it. Settings → Refresh tour boards brings them back.', {
       font: 'hand',
       size: 'l',
       w: 580,
     });
+
+    section.finish("That's the tour", 'Press it to go to your own boards.');
   }
 
   return data;
